@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Download PhoneDesk</title>
+<style>
+  :root { --bg:#0b0d12; --card:#151922; --line:#232a36; --fg:#e8eef7; --muted:#8a97a8; --accent:#3b82f6; --accent2:#2563eb; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif; background:var(--bg); color:var(--fg); min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px; }
+  .card { width:100%; max-width:520px; background:var(--card); border:1px solid var(--line); border-radius:16px; padding:32px; text-align:center; }
+  .logo { font-size:22px; font-weight:700; letter-spacing:.2px; }
+  .logo span { color:var(--accent); }
+  h1 { font-size:20px; margin:18px 0 6px; }
+  p.sub { color:var(--muted); margin:0 0 24px; font-size:14px; line-height:1.5; }
+  .btns { display:flex; flex-direction:column; gap:12px; }
+  a.btn { display:flex; align-items:center; justify-content:center; gap:10px; padding:14px 18px; border-radius:11px; text-decoration:none; font-weight:600; font-size:15px; border:1px solid var(--line); color:var(--fg); background:#1c2230; transition:.15s; }
+  a.btn:hover { border-color:var(--accent); }
+  a.btn.primary { background:linear-gradient(180deg,var(--accent),var(--accent2)); border-color:transparent; }
+  .os-ico { font-size:18px; }
+  .steps { text-align:left; margin:26px 0 0; padding:18px; background:#10141c; border:1px solid var(--line); border-radius:11px; }
+  .steps h2 { font-size:13px; text-transform:uppercase; letter-spacing:.5px; color:var(--muted); margin:0 0 10px; }
+  .steps ol { margin:0; padding-left:20px; color:#cdd6e2; font-size:14px; line-height:1.7; }
+  .note { color:var(--muted); font-size:12px; margin-top:18px; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">Phone<span>Desk</span></div>
+    <h1>Download the PhoneDesk app</h1>
+    <p class="sub">Install it on the computer the phone stays plugged into. You'll enter a pairing code from your manager to bring the phone online.</p>
+    <div class="btns">
+      <a id="win" class="btn primary" href="https://github.com/zarely24/phonedesk-backend/releases/latest/download/PhoneDesk-Windows.zip">
+        <span class="os-ico">&#x1FA9F;</span> Download for Windows
+      </a>
+      <a id="mac" class="btn" href="https://github.com/zarely24/phonedesk-backend/releases/latest/download/PhoneDesk.dmg">
+        <span class="os-ico">&#x1F34F;</span> Download for macOS
+      </a>
+    </div>
+    <div class="steps">
+      <h2>Setup &middot; about 2 minutes</h2>
+      <ol>
+        <li>Open the app &mdash; <b>Windows:</b> extract the zip, then run <b>PhoneDesk</b> (if Windows warns, click <i>More info &rarr; Run anyway</i>). <b>Mac:</b> right&#8209;click the app &rarr; <i>Open</i> the first time.</li>
+        <li>Plug the Android phone in by USB with <b>USB debugging</b> turned on, and tap <b>Allow</b> on the phone.</li>
+        <li>Type your <b>pairing code</b> &rarr; the phone goes online. Keep this computer on while it's in use.</li>
+      </ol>
+    </div>
+    <p class="note">Trouble? Ask your manager to re&#8209;send your pairing code.</p>
+  </div>
+  <script>
+    // Highlight the visitor's likely OS.
+    var p = ((navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || '').toLowerCase();
+    if (p.indexOf('mac') >= 0) {
+      document.getElementById('mac').classList.add('primary');
+      document.getElementById('win').classList.remove('primary');
+    }
+  </script>
+</body>
+</html>
