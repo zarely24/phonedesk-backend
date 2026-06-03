@@ -1,0 +1,17 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Local SQLite DB (Render uses Postgres)
+*.db
+phonedesk.db
+
+# Local env
+.env
+
+# OS
+Thumbs.db
+.DS_Store
+
+# NOTE: web/stream/ (the vendored ws-scrcpy client) IS committed — it must deploy.

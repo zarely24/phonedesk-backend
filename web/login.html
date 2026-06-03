@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sign in — PhoneDesk</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body class="auth">
+  <form id="loginForm" class="card auth-card">
+    <h1>Phone<span>Desk</span></h1>
+    <p class="muted" style="margin:0">Sign in to manage your phones</p>
+    <label>Email <input type="email" id="email" required autocomplete="username"></label>
+    <label>Password <input type="password" id="password" required autocomplete="current-password"></label>
+    <button class="btn primary" type="submit">Sign in</button>
+    <p id="err" class="error" hidden></p>
+  </form>
+  <script>
+    if (localStorage.getItem('pd_token')) location.href = '/';
+    const f = document.getElementById('loginForm');
+    f.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const err = document.getElementById('err'); err.hidden = true;
+      try {
+        const r = await fetch('/api/auth/login', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: email.value, password: password.value })
+        });
+        if (!r.ok) {
+          const d = await r.json().catch(() => ({}));
+          throw new Error(d.detail || 'Invalid email or password');
+        }
+        const data = await r.json();
+        localStorage.setItem('pd_token', data.access_token);
+        localStorage.setItem('pd_role', data.role);
+        localStorage.setItem('pd_name', data.name || data.email);
+        location.href = '/';
+      } catch (ex) {
+        err.textContent = ex.message || 'Login failed';
+        err.hidden = false;
+      }
+    });
+  </script>
+</body>
+</html>

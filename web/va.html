@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Phone — PhoneDesk</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="topbar">
+    <div class="brand">‹ <a href="/">Back to devices</a></div>
+    <div class="userbox"><span id="status">Connecting…</span></div>
+  </div>
+  <div class="wrap">
+    <div class="card" style="padding:30px;text-align:center">
+      <h2 id="msg">Connecting to the relay…</h2>
+      <p class="muted" id="sub"></p>
+      <!-- Phase 1b: the live phone <canvas> + control toolbar render here -->
+    </div>
+  </div>
+  <script>
+    const qs = new URLSearchParams(location.search);
+    const token = qs.get('token');
+    const setStatus = (t) => document.getElementById('status').textContent = t;
+    const setMsg = (t, sub) => {
+      document.getElementById('msg').textContent = t;
+      if (sub != null) document.getElementById('sub').textContent = sub;
+    };
+    if (!token) { setMsg('Missing session token', 'Go back and click Connect again.'); }
+    else {
+      const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+      const ws = new WebSocket(`${proto}://${location.host}/ws/viewer?token=${encodeURIComponent(token)}`);
+      ws.onopen = () => setStatus('Connected');
+      ws.onmessage = (ev) => {
+        let m = {}; try { m = JSON.parse(ev.data); } catch (e) {}
+        if (m.op === 'error') { setStatus('Error'); setMsg('Could not connect', m.msg); }
+        else if (m.op === 'info') { setStatus('Reached device'); setMsg('Relay connected ✓', m.msg); }
+      };
+      ws.onclose = () => setStatus('Closed');
+      ws.onerror = () => { setStatus('Error'); setMsg('Connection failed', 'Is the backend running?'); };
+    }
+  </script>
+</body>
+</html>

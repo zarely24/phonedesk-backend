@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Devices — PhoneDesk</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="topbar">
+    <div class="brand">Phone<span>Desk</span></div>
+    <div class="userbox">
+      <span id="who"></span>
+      <button class="btn" onclick="logout()">Log out</button>
+    </div>
+  </div>
+
+  <div class="wrap">
+    <div class="pagehead">
+      <h2>Devices</h2>
+      <button id="addBtn" class="btn primary hide" onclick="addDevice()">+ Add device</button>
+    </div>
+    <div class="card">
+      <table>
+        <thead>
+          <tr><th>Status</th><th>Name</th><th>Phone</th><th>Android</th><th>Battery</th><th>Last online</th><th></th></tr>
+        </thead>
+        <tbody id="rows"><tr><td colspan="7" class="empty">Loading…</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div id="modal" class="modal-bg hide">
+    <div class="card modal">
+      <h3>Add a device</h3>
+      <p class="muted" style="margin:0">Send the owner the desktop app, then have them type this code in it:</p>
+      <div id="codeBox" class="code">…</div>
+      <p class="muted" id="codeExp" style="margin:0;text-align:center"></p>
+      <div class="row"><button class="btn" onclick="closeModal()">Done</button></div>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
