@@ -95,7 +95,12 @@ async def viewer_stream(ws: WebSocket):
     entry = {"viewer": ws, "paired": loop.create_future(), "done": loop.create_future()}
     _pending[stream_id] = entry
     try:
-        await agent_home.send_json({"op": "open_stream", "stream_id": stream_id})
+        # Forward the viewer's query string so the agent opens the MATCHING ws-scrcpy endpoint:
+        # `action=multiplex` for the device list, `action=proxy-adb&remote=...&udid=...` for the
+        # live video. Without this, every viewer was forced onto the multiplexer, so the raw video
+        # handshake hit the multiplex parser ("Unsupported message type") and no frames flowed.
+        target_query = ws.scope.get("query_string", b"").decode("latin-1")
+        await agent_home.send_json({"op": "open_stream", "stream_id": stream_id, "query": target_query})
         await asyncio.wait_for(entry["paired"], timeout=10)  # agent connected its side
         await entry["done"]                                   # park until the pump ends
     except Exception:
