@@ -1,1 +1,39 @@
-<!doctype html><html lang="en"><head><meta charset="UTF-8"><meta content="width=device-width,initial-scale=1,minimum-scale=1,maximum-scale=1,user-scalable=no" name="viewport"/><title>WS scrcpy</title><script defer="defer" src="bundle.js"></script><link href="main.css" rel="stylesheet"></head><body></body></html>
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,minimum-scale=1,maximum-scale=1,user-scalable=no">
+<title>PhoneDesk</title>
+<script defer="defer" src="bundle.js"></script>
+<link href="main.css" rel="stylesheet">
+<style>
+  /* PhoneDesk: center the live phone in the window (instead of floating to the right). */
+  body.stream { display: flex !important; align-items: center; justify-content: center; }
+  .device-view { float: none !important; }
+</style>
+</head>
+<body>
+<script>
+/* PhoneDesk: skip the device list — drop straight into the live WebCodecs screen.
+   The ws-scrcpy client reads the URL hash on load and, if it's action=stream, starts the player.
+   So we find the (single) phone's WebCodecs link, point the URL at it, and reload. */
+(function () {
+  if (/action=stream/.test(location.hash)) return; // already viewing a stream
+  var tries = 0;
+  var iv = setInterval(function () {
+    if (/action=stream/.test(location.hash)) { clearInterval(iv); return; }
+    var link = Array.prototype.slice.call(document.querySelectorAll('a')).find(function (a) {
+      return /player=webcodecs/i.test(a.getAttribute('href') || '') ||
+             (a.textContent || '').trim().toLowerCase() === 'webcodecs';
+    });
+    if (link) {
+      clearInterval(iv);
+      try { location.href = link.href; location.reload(); } catch (e) {}
+    } else if (++tries > 60) {
+      clearInterval(iv); // ~30s with no streamable device — leave the list visible
+    }
+  }, 500);
+})();
+</script>
+</body>
+</html>
