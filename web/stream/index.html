@@ -7,9 +7,25 @@
 <script defer="defer" src="bundle.js"></script>
 <link href="main.css" rel="stylesheet">
 <style>
-  /* PhoneDesk: center the live phone in the window (instead of floating to the right). */
+  /* PhoneDesk theme — match the dashboard (#0f1115) and smooth the controls. */
+  :root {
+    --stream-bg-color: #0f1115 !important;
+    --main-bg-color: #0f1115 !important;
+    --control-buttons-bg-color: #171a21 !important;
+    --controls-bg-color: rgba(23,26,33,.96) !important;
+    --svg-button-fill: #c7cdd8 !important;
+    --svg-checkbox-bg-color: #4f8cff !important;
+    --text-color: #e7e9ee !important;
+  }
+  html, body, body.stream { background: #0f1115 !important; }
+  /* Center the live phone in the window (instead of floating to the right). */
   body.stream { display: flex !important; align-items: center; justify-content: center; }
   .device-view { float: none !important; }
+  /* Smooth, rounded control bar */
+  .control-buttons-list { background: transparent !important; padding: 6px 4px; }
+  .control-button { border-radius: 10px; opacity: .8; transition: background .15s, opacity .15s; }
+  .control-button:hover { opacity: 1; background: #1f232c !important; }
+  .more-box { background: rgba(23,26,33,.97) !important; border: 1px solid #2a2f3a; border-radius: 12px; }
 </style>
 </head>
 <body>
