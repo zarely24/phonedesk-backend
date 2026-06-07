@@ -19,9 +19,12 @@ def _view(d: Device) -> dict:
         "brand": d.brand,
         "model": d.model,
         "android_version": d.android_version,
+        "serial": d.serial,
         "online": bool(p.get("online")),
         "battery": p.get("battery"),
         "last_seen": p.get("last_seen"),
+        "users": p.get("users", []),            # Android users (profiles) the agent reported
+        "current_user": p.get("current_user"),  # active profile id
     }
 
 
@@ -60,3 +63,25 @@ def rename_device(device_id: str, body: RenameIn,
     d.name = body.name.strip() or d.name
     db.commit()
     return _view(d)
+
+
+class SwitchUserIn(BaseModel):
+    user_id: int
+
+
+@router.post("/devices/{device_id}/switch-user")
+async def switch_user(device_id: str, body: SwitchUserIn,
+                      user=Depends(current_user), db: Session = Depends(get_db)):
+    """Switch the phone's active Android user (profile); the agent also cycles airplane mode for a fresh IP."""
+    d = db.get(Device, device_id)
+    if not d:
+        raise HTTPException(404, "not found")
+    if user.role != "admin":
+        a = db.query(Assignment).filter_by(device_id=device_id, user_id=user.id).first()
+        if not a or not a.can_control:
+            raise HTTPException(403, "not allowed")
+    conn = presence.conn(device_id)
+    if conn is None:
+        raise HTTPException(409, "device offline")
+    await conn.send_json({"op": "switch_user", "user_id": body.user_id})
+    return {"ok": True}

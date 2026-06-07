@@ -51,5 +51,74 @@
   }, 500);
 })();
 </script>
+<script>
+/* PhoneDesk: profile (Android user) switcher — pick a profile; the phone switches user
+   and cycles airplane mode for a fresh mobile IP. Needs the updated desktop app to populate. */
+(function () {
+  var token = localStorage.getItem('pd_token');
+  if (!token) return; // only for a logged-in operator
+  var udid = (location.hash.match(/udid=([^&]+)/) || [])[1];
+  udid = udid ? decodeURIComponent(udid) : null;
+  var bar, sel, labelEl, deviceId = null, busy = false;
+  function api(path, opts) {
+    opts = opts || {}; opts.headers = Object.assign({ Authorization: 'Bearer ' + token }, opts.headers || {});
+    return fetch(path, opts);
+  }
+  function ensureBar() {
+    if (bar) return;
+    bar = document.createElement('div');
+    bar.style.cssText = 'position:fixed;top:12px;left:12px;z-index:99999;display:flex;align-items:center;gap:8px;background:rgba(23,26,33,.92);border:1px solid #2a2f3a;border-radius:12px;padding:8px 11px;font-family:Inter,system-ui,-apple-system,Segoe UI,sans-serif;box-shadow:0 8px 30px rgba(0,0,0,.35)';
+    labelEl = document.createElement('span'); labelEl.textContent = 'Profile';
+    labelEl.style.cssText = 'color:#9aa3b2;font-size:12px;font-weight:700;letter-spacing:.3px';
+    sel = document.createElement('select');
+    sel.style.cssText = 'background:#1f232c;color:#e7e9ee;border:1px solid #2a2f3a;border-radius:9px;padding:7px 11px;font-size:14px;font-weight:600;cursor:pointer;min-width:150px;outline:none';
+    sel.addEventListener('change', onSwitch);
+    bar.appendChild(labelEl); bar.appendChild(sel);
+    document.body.appendChild(bar);
+  }
+  function findDevice(list) {
+    if (!Array.isArray(list) || !list.length) return null;
+    if (udid) { var m = list.find(function (d) { return d.serial === udid; }); if (m) return m; }
+    return list[0];
+  }
+  function render(d) {
+    if (busy) return;
+    deviceId = d.id; ensureBar();
+    var users = d.users || [];
+    if (!users.length) { sel.innerHTML = '<option>Update the app to enable profiles</option>'; sel.disabled = true; return; }
+    sel.disabled = false; sel.innerHTML = '';
+    users.forEach(function (u) {
+      var o = document.createElement('option'); o.value = u.id; o.textContent = u.name || ('Profile ' + u.id);
+      if (d.current_user != null && Number(d.current_user) === Number(u.id)) o.selected = true;
+      sel.appendChild(o);
+    });
+  }
+  function load() {
+    api('/api/devices').then(function (r) { return r.json(); }).then(function (list) {
+      var d = findDevice(list); if (d) render(d);
+    }).catch(function () {});
+  }
+  function onSwitch() {
+    if (!deviceId || busy) return;
+    var uid = Number(sel.value); busy = true; sel.disabled = true; labelEl.textContent = 'Switching… new IP';
+    api('/api/devices/' + deviceId + '/switch-user', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ user_id: uid })
+    }).then(function () {
+      var tries = 0;
+      var iv = setInterval(function () {
+        tries++;
+        api('/api/devices').then(function (r) { return r.json(); }).then(function (list) {
+          var d = findDevice(list);
+          if ((d && Number(d.current_user) === uid) || tries > 12) {
+            clearInterval(iv); busy = false; labelEl.textContent = 'Profile'; sel.disabled = false; if (d) render(d);
+          }
+        }).catch(function () { if (tries > 12) { clearInterval(iv); busy = false; labelEl.textContent = 'Profile'; sel.disabled = false; } });
+      }, 2000);
+    }).catch(function () { busy = false; labelEl.textContent = 'Profile'; sel.disabled = false; });
+  }
+  load();
+  setInterval(load, 10000);
+})();
+</script>
 </body>
 </html>
