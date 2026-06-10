@@ -34,18 +34,20 @@ function rowHTML(d) {
   const status = `<span class="dot ${online ? 'online' : 'offline'}"></span>
                   <span class="pill ${online ? 'online' : 'offline'}">${online ? 'Online' : 'Offline'}</span>`;
   const phone = [d.brand, d.model].filter(Boolean).join(' ') || '—';
-  const batt = (d.battery != null) ? `<span class="batt">${d.battery}%</span>` : '—';
-  const btn = online
-    ? `<button class="btn primary" onclick="connect('${d.id}')">Connect</button>`
-    : `<button class="btn" disabled title="Device offline">Connect</button>`;
+  const admin = role === 'admin';
+  const actions = [
+    online
+      ? `<button class="btn primary" onclick="connect('${d.id}')">Connect</button>`
+      : `<button class="btn" disabled title="Device offline">Connect</button>`,
+    admin ? `<button class="btn icon" title="Rename" onclick="renameDevice('${d.id}')">✎</button>` : '',
+    admin ? `<button class="btn icon danger" title="Delete" onclick="deleteDevice('${d.id}')">🗑</button>` : '',
+  ].join(' ');
   return `<tr>
     <td>${status}</td>
     <td><strong>${esc(d.name)}</strong></td>
     <td class="muted">${esc(phone)}</td>
-    <td class="muted">${d.android_version ? 'Android ' + esc(d.android_version) : '—'}</td>
-    <td>${batt}</td>
     <td class="muted">${online ? 'now' : fmtAgo(d.last_seen)}</td>
-    <td style="text-align:right">${btn}</td>
+    <td style="text-align:right;white-space:nowrap">${actions}</td>
   </tr>`;
 }
 
@@ -54,19 +56,47 @@ function esc(s) {
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 }
 
+let _devices = [];
+
 async function loadDevices() {
   try {
     const r = await authFetch('/api/devices');
     const list = await r.json();
+    _devices = list;
     const rows = document.getElementById('rows');
     if (!list.length) {
-      rows.innerHTML = `<tr><td colspan="7" class="empty">
+      rows.innerHTML = `<tr><td colspan="5" class="empty">
         No devices yet.${role === 'admin' ? ' Click <b>+ Add device</b> to onboard one.' : ' Ask your admin to assign you a phone.'}
         </td></tr>`;
       return;
     }
     rows.innerHTML = list.map(rowHTML).join('');
   } catch (e) { /* handled by authFetch */ }
+}
+
+async function renameDevice(id) {
+  const d = _devices.find(x => x.id === id);
+  const name = prompt('New name for this phone:', d ? d.name : '');
+  if (!name || !name.trim()) return;
+  try {
+    const r = await authFetch('/api/devices/' + id, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: name.trim() })
+    });
+    if (!r.ok) throw new Error('rename failed');
+    loadDevices();
+  } catch (e) { alert('Could not rename the phone.'); }
+}
+
+async function deleteDevice(id) {
+  const d = _devices.find(x => x.id === id);
+  const name = d ? d.name : 'this phone';
+  if (!confirm(`Delete "${name}"?\n\nThe owner's app forgets this phone too (frees a slot). Re-adding needs a new pairing code.`)) return;
+  try {
+    const r = await authFetch('/api/devices/' + id, { method: 'DELETE' });
+    if (!r.ok) throw new Error('delete failed');
+    loadDevices();
+  } catch (e) { alert('Could not delete the phone.'); }
 }
 
 async function addDevice() {

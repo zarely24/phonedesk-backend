@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 from ..db import get_db
 from ..deps import current_user, require_admin
-from ..models import Assignment, Device
+from ..models import Agent, Assignment, Device
 from ..presence import presence
 
 router = APIRouter()
@@ -63,6 +63,29 @@ def rename_device(device_id: str, body: RenameIn,
     d.name = body.name.strip() or d.name
     db.commit()
     return _view(d)
+
+
+@router.delete("/devices/{device_id}")
+async def delete_device(device_id: str, admin=Depends(require_admin), db: Session = Depends(get_db)):
+    """Remove a phone. The owner's app is told to forget its token (frees a pairing slot);
+    if the app is offline, its next connect gets a 4401 and it cleans itself up."""
+    d = db.get(Device, device_id)
+    if not d:
+        raise HTTPException(404, "not found")
+    conn = presence.conn(device_id)
+    if conn is not None:
+        try:
+            await conn.send_json({"op": "unpair"})
+        except Exception:
+            pass
+    db.query(Assignment).filter_by(device_id=device_id).delete()
+    agent = db.get(Agent, d.agent_id)
+    if agent:
+        db.delete(agent)   # token hash gone -> any later connect is rejected (4401)
+    db.delete(d)
+    db.commit()
+    presence.set_offline(device_id)
+    return {"ok": True}
 
 
 class SwitchUserIn(BaseModel):
