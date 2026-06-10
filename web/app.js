@@ -83,9 +83,9 @@ async function renameDevice(id) {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: name.trim() })
     });
-    if (!r.ok) throw new Error('rename failed');
+    if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.detail || ('error ' + r.status)); }
     loadDevices();
-  } catch (e) { alert('Could not rename the phone.'); }
+  } catch (e) { alert('Could not rename the phone: ' + e.message); }
 }
 
 async function deleteDevice(id) {
@@ -94,9 +94,9 @@ async function deleteDevice(id) {
   if (!confirm(`Delete "${name}"?\n\nThe owner's app forgets this phone too (frees a slot). Re-adding needs a new pairing code.`)) return;
   try {
     const r = await authFetch('/api/devices/' + id, { method: 'DELETE' });
-    if (!r.ok) throw new Error('delete failed');
+    if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.detail || ('error ' + r.status)); }
     loadDevices();
-  } catch (e) { alert('Could not delete the phone.'); }
+  } catch (e) { alert('Could not delete the phone: ' + e.message); }
 }
 
 async function addDevice() {

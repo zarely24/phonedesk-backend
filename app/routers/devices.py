@@ -79,10 +79,10 @@ async def delete_device(device_id: str, admin=Depends(require_admin), db: Sessio
         except Exception:
             pass
     db.query(Assignment).filter_by(device_id=device_id).delete()
-    agent = db.get(Agent, d.agent_id)
-    if agent:
-        db.delete(agent)   # token hash gone -> any later connect is rejected (4401)
+    agent_id = d.agent_id
     db.delete(d)
+    db.flush()   # the device row must go before its agent (devices.agent_id FK)
+    db.query(Agent).filter_by(id=agent_id).delete()   # token hash gone -> later connects rejected (4401)
     db.commit()
     presence.set_offline(device_id)
     return {"ok": True}
