@@ -85,3 +85,30 @@ async def switch_user(device_id: str, body: SwitchUserIn,
         raise HTTPException(409, "device offline")
     await conn.send_json({"op": "switch_user", "user_id": body.user_id})
     return {"ok": True}
+
+
+class RenameUserIn(BaseModel):
+    user_id: int
+    name: str
+
+
+@router.post("/devices/{device_id}/rename-user")
+async def rename_user(device_id: str, body: RenameUserIn,
+                      user=Depends(current_user), db: Session = Depends(get_db)):
+    """Rename an Android user (profile). The agent renames it on the phone itself where the
+    Android version allows; otherwise it keeps the name locally and reports it in every meta."""
+    d = db.get(Device, device_id)
+    if not d:
+        raise HTTPException(404, "not found")
+    if user.role != "admin":
+        a = db.query(Assignment).filter_by(device_id=device_id, user_id=user.id).first()
+        if not a or not a.can_control:
+            raise HTTPException(403, "not allowed")
+    name = body.name.strip()[:24]
+    if not name:
+        raise HTTPException(422, "empty name")
+    conn = presence.conn(device_id)
+    if conn is None:
+        raise HTTPException(409, "device offline")
+    await conn.send_json({"op": "rename_user", "user_id": body.user_id, "name": name})
+    return {"ok": True}
