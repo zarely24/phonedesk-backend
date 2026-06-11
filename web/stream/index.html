@@ -59,7 +59,7 @@
   if (!token) return; // only for a logged-in operator
   var udid = (location.hash.match(/udid=([^&]+)/) || [])[1];
   udid = udid ? decodeURIComponent(udid) : null;
-  var bar, sel, labelEl, editBtn, panel, deviceId = null, busy = false, lastUsers = [];
+  var bar, sel, labelEl, editBtn, refreshBtn, panel, deviceId = null, busy = false, lastUsers = [];
   function api(path, opts) {
     opts = opts || {}; opts.headers = Object.assign({ Authorization: 'Bearer ' + token }, opts.headers || {});
     return fetch(path, opts);
@@ -81,7 +81,12 @@
     editBtn.textContent = '✎'; editBtn.title = 'Rename profiles';
     editBtn.style.cssText = 'background:#1f232c;color:#c7cdd8;border:1px solid #2a2f3a;border-radius:9px;padding:6px 10px;font-size:14px;cursor:pointer';
     editBtn.addEventListener('click', togglePanel);
-    bar.appendChild(labelEl); bar.appendChild(sel); bar.appendChild(editBtn);
+    refreshBtn = document.createElement('button');
+    refreshBtn.innerHTML = '&#8635; Refresh';
+    refreshBtn.title = 'Phone frozen or stuck? Restart its connection (no action needed from the owner)';
+    refreshBtn.style.cssText = 'background:#1f232c;color:#c7cdd8;border:1px solid #2a2f3a;border-radius:9px;padding:6px 11px;font-size:13px;font-weight:600;cursor:pointer';
+    refreshBtn.addEventListener('click', doRefresh);
+    bar.appendChild(labelEl); bar.appendChild(sel); bar.appendChild(editBtn); bar.appendChild(refreshBtn);
     document.body.appendChild(bar);
   }
   function findDevice(list) {
@@ -155,6 +160,13 @@
     api('/api/devices').then(function (r) { return r.json(); }).then(function (list) {
       var d = findDevice(list); if (d) render(d);
     }).catch(function () {});
+  }
+  // Remote refresh: ask the owner's app to restart adb + the screen engine, then reload for a fresh stream.
+  function doRefresh() {
+    if (!deviceId) return;
+    refreshBtn.disabled = true; refreshBtn.innerHTML = 'Refreshing...';
+    api('/api/devices/' + deviceId + '/refresh', { method: 'POST' }).catch(function () {});
+    setTimeout(function () { location.reload(); }, 9000);   // owner agent restarts (~8s) -> reload to reconnect
   }
   function onSwitch() {
     if (!deviceId || busy) return;

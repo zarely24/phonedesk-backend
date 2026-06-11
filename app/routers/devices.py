@@ -110,6 +110,24 @@ async def switch_user(device_id: str, body: SwitchUserIn,
     return {"ok": True}
 
 
+@router.post("/devices/{device_id}/refresh")
+async def refresh_device(device_id: str, user=Depends(current_user), db: Session = Depends(get_db)):
+    """VA-triggered remote refresh: tell the owner's app to restart adb + the screen engine and
+    reconnect - recovers a stuck/frozen phone without the owner touching anything (no prompt)."""
+    d = db.get(Device, device_id)
+    if not d:
+        raise HTTPException(404, "not found")
+    if user.role != "admin":
+        a = db.query(Assignment).filter_by(device_id=device_id, user_id=user.id).first()
+        if not a or not a.can_control:
+            raise HTTPException(403, "not allowed")
+    conn = presence.conn(device_id)
+    if conn is None:
+        raise HTTPException(409, "device offline")
+    await conn.send_json({"op": "refresh"})
+    return {"ok": True}
+
+
 class RenameUserIn(BaseModel):
     user_id: int
     name: str
