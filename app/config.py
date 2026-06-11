@@ -15,8 +15,10 @@ class Settings:
     DEVICE_TOKEN_PEPPER: str = os.getenv("DEVICE_TOKEN_PEPPER", "dev-pepper-change-me")
 
     JWT_ALG: str = "HS256"
-    ACCESS_TTL: int = int(os.getenv("ACCESS_TTL", str(60 * 60 * 12)))   # 12h (dev-friendly)
-    SESSION_TOKEN_TTL: int = int(os.getenv("SESSION_TOKEN_TTL", "3600"))  # stream cookie lifetime
+    ACCESS_TTL: int = int(os.getenv("ACCESS_TTL", str(60 * 60 * 24 * 30)))   # 30d - VAs stay signed in across shifts
+    # Stream pass lifetime. The stream page auto-renews it every ~25 min, so a session never expires
+    # while it's open; 24h is just a big safety margin (covers a laptop sleeping mid-shift).
+    SESSION_TOKEN_TTL: int = int(os.getenv("SESSION_TOKEN_TTL", str(60 * 60 * 24)))  # 24h
 
     # Bootstrap admin (created on first startup if no such user exists).
     ADMIN_EMAIL: str = os.getenv("ADMIN_EMAIL", "admin@local").lower()

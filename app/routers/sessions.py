@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from ..config import settings
 from ..db import get_db
 from ..deps import current_user
 from ..models import Assignment, Device
@@ -36,7 +37,9 @@ def start_session(body: SessionIn, response: Response,
     session_id = str(uuid.uuid4())
     token = make_session_token(user.id, device.id, session_id)
     # The browser sends this cookie on the /stream/ WebSocket handshake; the tunnel validates it.
-    response.set_cookie("pd_stream", token, max_age=3600, httponly=True, samesite="lax", path="/")
+    # max_age matches the token TTL; the stream page re-POSTs here every ~25 min to keep it fresh.
+    response.set_cookie("pd_stream", token, max_age=settings.SESSION_TOKEN_TTL,
+                        httponly=True, samesite="lax", path="/")
     return {
         "session_id": session_id,
         "token": token,
