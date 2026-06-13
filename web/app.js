@@ -39,6 +39,7 @@ function rowHTML(d) {
     online
       ? `<button class="btn primary" onclick="connect('${d.id}')">Connect</button>`
       : `<button class="btn" disabled title="Device offline">Connect</button>`,
+    admin ? `<button class="btn icon" title="Logs" onclick="showLogs('${d.id}')">📋</button>` : '',
     admin ? `<button class="btn icon" title="Rename" onclick="renameDevice('${d.id}')">✎</button>` : '',
     admin ? `<button class="btn icon danger" title="Delete" onclick="deleteDevice('${d.id}')">🗑</button>` : '',
   ].join(' ');
@@ -124,5 +125,43 @@ async function connect(deviceId) {
   } catch (e) { alert(e.message); }
 }
 
+// ---- live logs (admin) ----
+let _logsDeviceId = null;
+
+function showLogs(id) {
+  _logsDeviceId = id;
+  const d = _devices.find(x => x.id === id);
+  document.getElementById('logsTitle').textContent = 'Logs — ' + (d ? d.name : id);
+  document.getElementById('logsBox').textContent = 'Loading…';
+  document.getElementById('logsModal').classList.remove('hide');
+  refreshLogs();
+}
+function closeLogs() {
+  _logsDeviceId = null;
+  document.getElementById('logsModal').classList.add('hide');
+}
+async function refreshLogs() {
+  const modal = document.getElementById('logsModal');
+  if (!_logsDeviceId || modal.classList.contains('hide')) return;   // only poll while open
+  try {
+    const r = await authFetch('/api/devices/' + _logsDeviceId + '/logs');
+    if (!r.ok) throw new Error('error ' + r.status);
+    const data = await r.json();
+    const box = document.getElementById('logsBox');
+    const lines = data.logs || [];
+    const stick = box.scrollTop + box.clientHeight >= box.scrollHeight - 20;   // keep pinned to bottom
+    box.textContent = lines.length ? lines.join('\n')
+      : 'No logs yet. The phone may be offline, or the owner needs to update their PhoneDesk app to v0.2.8+.';
+    if (stick) box.scrollTop = box.scrollHeight;
+  } catch (e) { /* transient; next tick retries */ }
+}
+function copyLogs() {
+  const txt = document.getElementById('logsBox').textContent || '';
+  navigator.clipboard.writeText(txt).then(
+    () => { const b = document.getElementById('copyLogsBtn'); b.textContent = 'Copied!'; setTimeout(() => b.textContent = 'Copy', 1200); },
+    () => alert('Could not copy.'));
+}
+
 loadDevices();
 setInterval(loadDevices, 5000); // live-ish refresh
+setInterval(refreshLogs, 2000); // live logs while the modal is open (early-returns otherwise)

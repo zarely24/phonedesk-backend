@@ -56,6 +56,9 @@ async def agent_ws(ws: WebSocket):
                 presence.touch(device_id, msg.get("battery"))
             elif op == "meta":
                 presence.update(device_id, msg.get("data", {}))
+            elif op == "log":
+                # The agent forwards its local agent.log lines here for the admin log view.
+                presence.add_log(device_id, str(msg.get("line", ""))[:2000])
             # op == "tunnel" handled in Phase 1b
     except WebSocketDisconnect:
         pass

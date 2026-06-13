@@ -4,6 +4,7 @@ For the MVP (one backend instance, <=10 phones) this is all we need — no Redis
 When you scale to multiple backend instances, this is the piece that moves to Redis.
 """
 import time
+from collections import deque
 from typing import Any
 
 # A healthy agent sends a meta heartbeat every 10s (and answers ws ping/pong). Treat a device as
@@ -11,11 +12,15 @@ from typing import Any
 # sending stops showing ONLINE on its own — no background sweep needed (checked on read).
 ONLINE_TIMEOUT = 40.0
 
+# How many recent agent log lines to keep per device (in-memory ring buffer, for the admin log view).
+LOG_BUFFER = 800
+
 
 class Presence:
     def __init__(self) -> None:
         self._conns: dict[str, Any] = {}          # device_id -> agent WebSocket
         self._meta: dict[str, dict] = {}          # device_id -> {online, battery, last_seen}
+        self._logs: dict[str, deque] = {}         # device_id -> recent agent log lines (ring buffer)
 
     def _fresh(self, m: dict) -> bool:
         return bool(m.get("online") and (time.time() - m.get("last_seen", 0) < ONLINE_TIMEOUT))
@@ -57,6 +62,15 @@ class Presence:
 
     def conn(self, device_id: str) -> Any:
         return self._conns.get(device_id)
+
+    def add_log(self, device_id: str, line: str) -> None:
+        buf = self._logs.get(device_id)
+        if buf is None:
+            buf = self._logs[device_id] = deque(maxlen=LOG_BUFFER)
+        buf.append(line)
+
+    def get_logs(self, device_id: str) -> list[str]:
+        return list(self._logs.get(device_id, ()))
 
     def get(self, device_id: str) -> dict:
         m = self._meta.get(device_id)

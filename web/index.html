@@ -40,6 +40,20 @@
     </div>
   </div>
 
-  <script src="/app.js?v=4"></script>
+  <div id="logsModal" class="modal-bg hide">
+    <div class="card modal" style="width:min(760px,92vw)">
+      <h3 id="logsTitle">Logs</h3>
+      <p class="muted" style="margin:0">Live agent log (newest at the bottom, refreshes every 2s).</p>
+      <div id="logsBox" style="height:60vh;overflow:auto;white-space:pre-wrap;word-break:break-word;
+        font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;line-height:1.5;
+        background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:14px;color:var(--muted)">Loading…</div>
+      <div class="row">
+        <button class="btn" id="copyLogsBtn" onclick="copyLogs()">Copy</button>
+        <button class="btn" onclick="closeLogs()">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/app.js?v=5"></script>
 </body>
 </html>

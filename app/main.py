@@ -8,7 +8,7 @@ from .config import settings
 from .db import SessionLocal, init_db
 from .models import User
 from .relay import agent_ws, tunnel, viewer_ws
-from .routers import auth, devices, pairing, sessions
+from .routers import auth, devices, logs, pairing, sessions
 from .security import hash_password
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # backend/
@@ -47,6 +47,7 @@ def healthz():
 # REST API (registered before the static catch-all so /api/* wins)
 app.include_router(auth.router, prefix="/api")
 app.include_router(devices.router, prefix="/api")
+app.include_router(logs.router, prefix="/api")
 app.include_router(pairing.router, prefix="/api")
 app.include_router(sessions.router, prefix="/api")
 
