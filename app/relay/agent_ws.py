@@ -62,5 +62,7 @@ async def agent_ws(ws: WebSocket):
     except Exception:
         pass
     finally:
-        presence.set_offline(device_id)
+        # Pass our own socket: if the agent already reconnected (a newer socket is current),
+        # this stale close becomes a no-op instead of knocking the live device offline.
+        presence.set_offline(device_id, ws)
         await asyncio.to_thread(_persist_last_seen, device_id)
