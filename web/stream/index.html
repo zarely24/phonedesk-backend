@@ -32,21 +32,38 @@
 <script>
 /* PhoneDesk: skip the device list — drop straight into the live WebCodecs screen.
    The ws-scrcpy client reads the URL hash on load and, if it's action=stream, starts the player.
-   So we find the (single) phone's WebCodecs link, point the URL at it, and reload. */
+   With several phones plugged into ONE computer the list shows them all, so we open the link for the
+   phone the operator actually clicked (its serial, passed via sessionStorage by the dashboard) —
+   not just the first one. Falls back to the first link only when no target was set (single-phone). */
 (function () {
   if (/action=stream/.test(location.hash)) return; // already viewing a stream
+  var target = null;
+  try { target = sessionStorage.getItem('pd_target_serial'); } catch (e) {}
+  function udidOf(href) { var m = /udid=([^&]+)/.exec(href || ''); return m ? decodeURIComponent(m[1]) : null; }
   var tries = 0;
   var iv = setInterval(function () {
     if (/action=stream/.test(location.hash)) { clearInterval(iv); return; }
-    var link = Array.prototype.slice.call(document.querySelectorAll('a')).find(function (a) {
+    var links = Array.prototype.slice.call(document.querySelectorAll('a')).filter(function (a) {
       return /player=webcodecs/i.test(a.getAttribute('href') || '') ||
              (a.textContent || '').trim().toLowerCase() === 'webcodecs';
     });
+    var link = null;
+    if (target) {
+      link = links.find(function (a) {
+        var h = a.getAttribute('href') || '';
+        return udidOf(h) === target || h.indexOf(target) >= 0;   // match the chosen phone by serial
+      });
+      // Safety net for the common single-phone case: if the chosen phone is the ONLY streamable
+      // device, open it even if the serial didn't match exactly. With 2+ devices we never guess.
+      if (!link && links.length === 1) link = links[0];
+    } else {
+      link = links[0];   // no target (direct open) — first streamable device
+    }
     if (link) {
       clearInterval(iv);
       try { location.href = link.href; location.reload(); } catch (e) {}
     } else if (++tries > 60) {
-      clearInterval(iv); // ~30s with no streamable device — leave the list visible
+      clearInterval(iv); // ~30s: target phone not in the list yet — leave the list visible to pick manually
     }
   }, 500);
 })();

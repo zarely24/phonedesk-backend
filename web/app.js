@@ -119,8 +119,12 @@ async function connect(deviceId) {
     });
     if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.detail || 'Could not start session'); }
     const s = await r.json();
+    // Tell the stream page WHICH phone to open (by serial), so with multiple phones plugged into one
+    // computer it jumps to the one you clicked — not just the first device in the ws-scrcpy list.
+    const dev = _devices.find(x => x.id === deviceId);
+    try { if (dev && dev.serial) sessionStorage.setItem('pd_target_serial', dev.serial);
+          else sessionStorage.removeItem('pd_target_serial'); } catch (e) {}
     // The pd_stream cookie was set on this response; open the vendored ws-scrcpy client (tunneled).
-    // Land on the device list (proven entry) — the user clicks the phone -> WebCodecs -> live screen.
     location.href = `/stream/`;
   } catch (e) { alert(e.message); }
 }
