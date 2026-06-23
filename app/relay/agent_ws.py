@@ -27,6 +27,19 @@ def _lookup_device(token_hash: str):
         db.close()
 
 
+def _charge_policy(device_id: str) -> dict | None:
+    """The phone's stored charge-limit policy, as a set_charge_policy op payload."""
+    db = SessionLocal()
+    try:
+        d = db.get(Device, device_id)
+        if not d:
+            return None
+        return {"op": "set_charge_policy", "enabled": d.charge_limit_enabled,
+                "stop": d.charge_stop, "resume": d.charge_resume}
+    finally:
+        db.close()
+
+
 def _persist_last_seen(device_id: str):
     db = SessionLocal()
     try:
@@ -48,12 +61,20 @@ async def agent_ws(ws: WebSocket):
 
     await ws.accept()
     presence.set_online(device_id, ws)
+    # Push the phone's charge-limit policy on (re)connect so it survives agent/phone restarts
+    # without the admin having to re-save it.
+    policy = await asyncio.to_thread(_charge_policy, device_id)
+    if policy is not None:
+        try:
+            await ws.send_json(policy)
+        except Exception:
+            pass
     try:
         while True:
             msg = await ws.receive_json()
             op = msg.get("op")
             if op == "heartbeat":
-                presence.touch(device_id, msg.get("battery"))
+                presence.touch(device_id, msg.get("battery"), msg.get("charging"))
             elif op == "meta":
                 presence.update(device_id, msg.get("data", {}))
             elif op == "log":

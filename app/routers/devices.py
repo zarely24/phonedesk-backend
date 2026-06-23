@@ -22,9 +22,14 @@ def _view(d: Device) -> dict:
         "serial": d.serial,
         "online": bool(p.get("online")),
         "battery": p.get("battery"),
+        "charging": p.get("charging"),          # live: is the phone drawing charge right now?
+        "charge_status": p.get("charge_status"),  # agent-reported: firmware / poll / unavailable / off
         "last_seen": p.get("last_seen"),
         "users": p.get("users", []),            # Android users (profiles) the agent reported
         "current_user": p.get("current_user"),  # active profile id
+        "charge_limit_enabled": d.charge_limit_enabled,
+        "charge_stop": d.charge_stop,
+        "charge_resume": d.charge_resume,
     }
 
 
@@ -152,4 +157,69 @@ async def rename_user(device_id: str, body: RenameUserIn,
     if conn is None:
         raise HTTPException(409, "device offline")
     await conn.send_json({"op": "rename_user", "user_id": body.user_id, "name": name})
+    return {"ok": True}
+
+
+class ChargePolicyIn(BaseModel):
+    enabled: bool = True
+    stop: int = 80
+    resume: int = 25
+
+
+@router.post("/devices/{device_id}/charge-policy")
+async def set_charge_policy(device_id: str, body: ChargePolicyIn,
+                           user=Depends(current_user), db: Session = Depends(get_db)):
+    """Set the battery charge-limit policy. The phone stays plugged in continuously; the
+    owner's app stops charging at `stop`% and resumes at `resume`%, keeping the USB-C
+    data/control link alive the whole time. Persisted so it's re-applied on reconnect."""
+    d = db.get(Device, device_id)
+    if not d:
+        raise HTTPException(404, "not found")
+    if user.role != "admin":
+        a = db.query(Assignment).filter_by(device_id=device_id, user_id=user.id).first()
+        if not a or not a.can_control:
+            raise HTTPException(403, "not allowed")
+    if not (0 < body.resume < body.stop <= 100):
+        raise HTTPException(422, "need 0 < resume < stop <= 100")
+    d.charge_limit_enabled = body.enabled
+    d.charge_stop = body.stop
+    d.charge_resume = body.resume
+    db.commit()
+    conn = presence.conn(device_id)
+    if conn is not None:
+        try:
+            await conn.send_json({"op": "set_charge_policy", "enabled": body.enabled,
+                                  "stop": body.stop, "resume": body.resume})
+        except Exception:
+            pass  # offline/stale socket — the policy is persisted and re-sent on reconnect
+    return _view(d)
+
+
+class CreateProfilesIn(BaseModel):
+    count: int
+    package: str = ""
+    name_prefix: str = "Profile"
+
+
+@router.post("/devices/{device_id}/create-profiles")
+async def create_profiles(device_id: str, body: CreateProfilesIn,
+                          user=Depends(current_user), db: Session = Depends(get_db)):
+    """Bulk-create Android user profiles (GrapheneOS). The agent runs `pm create-user` for
+    each and clones the given app into every new profile, then reports the new users back in
+    its next meta op (which populates the profile switcher)."""
+    d = db.get(Device, device_id)
+    if not d:
+        raise HTTPException(404, "not found")
+    if user.role != "admin":
+        a = db.query(Assignment).filter_by(device_id=device_id, user_id=user.id).first()
+        if not a or not a.can_control:
+            raise HTTPException(403, "not allowed")
+    if not (1 <= body.count <= 50):
+        raise HTTPException(422, "count must be 1..50")
+    conn = presence.conn(device_id)
+    if conn is None:
+        raise HTTPException(409, "device offline")
+    await conn.send_json({"op": "create_profiles", "count": body.count,
+                          "package": body.package.strip(),
+                          "name_prefix": (body.name_prefix.strip() or "Profile")[:24]})
     return {"ok": True}

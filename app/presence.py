@@ -1,7 +1,8 @@
 """In-memory presence + the live agent connections.
 
-For the MVP (one backend instance, <=10 phones) this is all we need — no Redis.
-When you scale to multiple backend instances, this is the piece that moves to Redis.
+For a single backend instance (comfortably handles 15+ phones on one computer) this is all
+we need — no Redis. When you scale to multiple backend instances, this is the piece that
+moves to Redis.
 """
 import time
 from collections import deque
@@ -43,12 +44,15 @@ class Presence:
             self._meta[device_id]["online"] = False
             self._meta[device_id]["last_seen"] = time.time()
 
-    def touch(self, device_id: str, battery: int | None = None) -> None:
+    def touch(self, device_id: str, battery: int | None = None,
+              charging: bool | None = None) -> None:
         m = self._meta.setdefault(device_id, {})
         m["online"] = True
         m["last_seen"] = time.time()
         if battery is not None:
             m["battery"] = battery
+        if charging is not None:
+            m["charging"] = bool(charging)
 
     def update(self, device_id: str, data: dict) -> None:
         m = self._meta.setdefault(device_id, {})

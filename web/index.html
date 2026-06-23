@@ -23,9 +23,9 @@
     <div class="card">
       <table>
         <thead>
-          <tr><th>Status</th><th>Name</th><th>Phone</th><th>Last online</th><th></th></tr>
+          <tr><th>Status</th><th>Name</th><th>Phone</th><th>Battery</th><th>Last online</th><th></th></tr>
         </thead>
-        <tbody id="rows"><tr><td colspan="5" class="empty">Loading…</td></tr></tbody>
+        <tbody id="rows"><tr><td colspan="6" class="empty">Loading…</td></tr></tbody>
       </table>
     </div>
   </div>
@@ -37,6 +37,61 @@
       <div id="codeBox" class="code">…</div>
       <p class="muted" id="codeExp" style="margin:0;text-align:center"></p>
       <div class="row"><button class="btn" onclick="closeModal()">Done</button></div>
+    </div>
+  </div>
+
+  <div id="battModal" class="modal-bg hide">
+    <div class="card modal">
+      <h3 id="battTitle">Battery charge limit</h3>
+      <p class="muted" style="margin:0">Keep the phone plugged in 24/7. Charging stops at the
+        upper limit and resumes at the lower one — the USB-C link stays alive the whole time.</p>
+      <p id="battStatus" style="margin:0;font-size:12px"></p>
+      <label style="display:flex;align-items:center;gap:10px;font-size:14px">
+        <input type="checkbox" id="battEnabled" style="width:auto"> Enable charge limiting
+      </label>
+      <label class="muted" style="display:flex;flex-direction:column;gap:6px;font-size:13px">
+        Stop charging at (%)
+        <input type="number" id="battStop" min="1" max="100" value="80"
+          style="background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:10px;border-radius:10px;font-size:15px">
+      </label>
+      <label class="muted" style="display:flex;flex-direction:column;gap:6px;font-size:13px">
+        Resume charging at (%)
+        <input type="number" id="battResume" min="1" max="99" value="25"
+          style="background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:10px;border-radius:10px;font-size:15px">
+      </label>
+      <p class="error hide" id="battErr"></p>
+      <div class="row">
+        <button class="btn" onclick="closeBatt()">Cancel</button>
+        <button class="btn primary" id="battSaveBtn" onclick="saveBatt()">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="profModal" class="modal-bg hide">
+    <div class="card modal">
+      <h3 id="profTitle">Bulk profile creation</h3>
+      <p class="muted" style="margin:0">Create several GrapheneOS user profiles at once and
+        clone an app into each. New profiles appear here and in the profile switcher shortly after.</p>
+      <label class="muted" style="display:flex;flex-direction:column;gap:6px;font-size:13px">
+        Number of profiles
+        <input type="number" id="profCount" min="1" max="50" value="5"
+          style="background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:10px;border-radius:10px;font-size:15px">
+      </label>
+      <label class="muted" style="display:flex;flex-direction:column;gap:6px;font-size:13px">
+        App package to clone (optional)
+        <input type="text" id="profPackage" placeholder="com.example.app"
+          style="background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:10px;border-radius:10px;font-size:15px">
+      </label>
+      <label class="muted" style="display:flex;flex-direction:column;gap:6px;font-size:13px">
+        Name prefix
+        <input type="text" id="profPrefix" value="Profile" maxlength="24"
+          style="background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:10px;border-radius:10px;font-size:15px">
+      </label>
+      <p class="error hide" id="profErr"></p>
+      <div class="row">
+        <button class="btn" onclick="closeProf()">Cancel</button>
+        <button class="btn primary" id="profCreateBtn" onclick="createProfiles()">Create</button>
+      </div>
     </div>
   </div>
 
@@ -54,6 +109,6 @@
     </div>
   </div>
 
-  <script src="/app.js?v=6"></script>
+  <script src="/app.js?v=8"></script>
 </body>
 </html>

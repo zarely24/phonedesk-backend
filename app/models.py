@@ -4,7 +4,7 @@ no per-owner accounts — one org (yours) with users (admin + VAs), agents, devi
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -50,7 +50,9 @@ class Agent(Base):
 
 
 class Device(Base):
-    """A registered phone (one per agent in the MVP)."""
+    """A registered phone. One token -> one Agent row -> one Device, so a computer running
+    many phones pairs each one separately (its own token + phone-home socket). Up to 15
+    phones on a single computer is supported this way."""
     __tablename__ = "devices"
     id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
     public_id: Mapped[str] = mapped_column(String, unique=True, index=True, default=_short_id)
@@ -60,6 +62,12 @@ class Device(Base):
     model: Mapped[str] = mapped_column(String, default="")
     android_version: Mapped[str] = mapped_column(String, default="")
     serial: Mapped[str] = mapped_column(String, default="")
+    # Battery charge limiting (keeps the phone plugged in 24/7 without swelling the cell):
+    # the agent stops charging at charge_stop% and resumes at charge_resume%, keeping the
+    # USB-C data/control link alive throughout. Defaults: stop 80, resume 25.
+    charge_limit_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    charge_stop: Mapped[int] = mapped_column(Integer, default=80)
+    charge_resume: Mapped[int] = mapped_column(Integer, default=25)
     last_seen: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
 

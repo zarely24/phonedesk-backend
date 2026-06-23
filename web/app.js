@@ -29,6 +29,18 @@ function fmtAgo(ts) {
   return Math.floor(s / 86400) + 'd ago';
 }
 
+function battHTML(d) {
+  if (d.battery == null) return '<span class="muted">—</span>';
+  // ⚡ = actively charging, 🔌 = plugged in but charging paused by the limit, 🪫 = on battery.
+  let icon = '';
+  if (d.charging === true) icon = ' ⚡';
+  else if (d.charge_limit_enabled && d.battery >= d.charge_stop) icon = ' 🔌';
+  const limit = d.charge_limit_enabled
+    ? `<span class="muted" style="font-size:12px"> · cap ${d.charge_stop}/${d.charge_resume}</span>`
+    : '';
+  return `<span class="batt">${d.battery}%${icon}</span>${limit}`;
+}
+
 function rowHTML(d) {
   const online = d.online;
   const status = `<span class="dot ${online ? 'online' : 'offline'}"></span>
@@ -39,6 +51,8 @@ function rowHTML(d) {
     online
       ? `<button class="btn primary" onclick="connect('${d.id}')">Connect</button>`
       : `<button class="btn" disabled title="Device offline">Connect</button>`,
+    admin ? `<button class="btn icon" title="Battery charge limit" onclick="showBatt('${d.id}')">🔋</button>` : '',
+    admin ? `<button class="btn icon" title="Bulk profile creation" onclick="showProf('${d.id}')">👥</button>` : '',
     admin ? `<button class="btn icon" title="Logs" onclick="showLogs('${d.id}')">📋</button>` : '',
     admin ? `<button class="btn icon" title="Rename" onclick="renameDevice('${d.id}')">✎</button>` : '',
     admin ? `<button class="btn icon danger" title="Delete" onclick="deleteDevice('${d.id}')">🗑</button>` : '',
@@ -47,6 +61,7 @@ function rowHTML(d) {
     <td>${status}</td>
     <td><strong>${esc(d.name)}</strong></td>
     <td class="muted">${esc(phone)}</td>
+    <td>${battHTML(d)}</td>
     <td class="muted">${online ? 'now' : fmtAgo(d.last_seen)}</td>
     <td style="text-align:right;white-space:nowrap">${actions}</td>
   </tr>`;
@@ -66,7 +81,7 @@ async function loadDevices() {
     _devices = list;
     const rows = document.getElementById('rows');
     if (!list.length) {
-      rows.innerHTML = `<tr><td colspan="5" class="empty">
+      rows.innerHTML = `<tr><td colspan="6" class="empty">
         No devices yet.${role === 'admin' ? ' Click <b>+ Add device</b> to onboard one.' : ' Ask your admin to assign you a phone.'}
         </td></tr>`;
       return;
@@ -127,6 +142,94 @@ async function connect(deviceId) {
     // The pd_stream cookie was set on this response; open the vendored ws-scrcpy client (tunneled).
     location.href = `/stream/`;
   } catch (e) { alert(e.message); }
+}
+
+// ---- battery charge limit (admin) ----
+let _battDeviceId = null;
+
+function showBatt(id) {
+  _battDeviceId = id;
+  const d = _devices.find(x => x.id === id);
+  document.getElementById('battTitle').textContent = 'Battery charge limit — ' + (d ? d.name : id);
+  document.getElementById('battEnabled').checked = d ? d.charge_limit_enabled !== false : true;
+  document.getElementById('battStop').value = d && d.charge_stop != null ? d.charge_stop : 80;
+  document.getElementById('battResume').value = d && d.charge_resume != null ? d.charge_resume : 25;
+  // Agent-reported live state: shows whether limiting is actually active on the phone (firmware /
+  // poll) or unavailable (e.g. phone not rooted) — so you can confirm it works on real hardware.
+  const st = document.getElementById('battStatus');
+  const cs = d && d.charge_status;
+  if (!cs) { st.textContent = d && d.online ? 'Status: waiting for the phone to report…' : 'Status: phone offline'; st.style.color = 'var(--muted)'; }
+  else {
+    st.textContent = 'Status: ' + cs;
+    st.style.color = /unavailable/i.test(cs) ? 'var(--amber)' : 'var(--green)';
+  }
+  document.getElementById('battErr').classList.add('hide');
+  document.getElementById('battModal').classList.remove('hide');
+}
+function closeBatt() {
+  _battDeviceId = null;
+  document.getElementById('battModal').classList.add('hide');
+}
+async function saveBatt() {
+  if (!_battDeviceId) return;
+  const enabled = document.getElementById('battEnabled').checked;
+  const stop = parseInt(document.getElementById('battStop').value, 10);
+  const resume = parseInt(document.getElementById('battResume').value, 10);
+  const err = document.getElementById('battErr');
+  if (!(resume > 0 && resume < stop && stop <= 100)) {
+    err.textContent = 'Need 0 < resume < stop ≤ 100.'; err.classList.remove('hide'); return;
+  }
+  const btn = document.getElementById('battSaveBtn');
+  btn.disabled = true; btn.textContent = 'Saving…';
+  try {
+    const r = await authFetch('/api/devices/' + _battDeviceId + '/charge-policy', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled, stop, resume })
+    });
+    if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e.detail || ('error ' + r.status)); }
+    closeBatt(); loadDevices();
+  } catch (e) {
+    err.textContent = 'Could not save: ' + e.message; err.classList.remove('hide');
+  } finally { btn.disabled = false; btn.textContent = 'Save'; }
+}
+
+// ---- bulk profile creation (admin) ----
+let _profDeviceId = null;
+
+function showProf(id) {
+  _profDeviceId = id;
+  const d = _devices.find(x => x.id === id);
+  document.getElementById('profTitle').textContent = 'Bulk profile creation — ' + (d ? d.name : id);
+  document.getElementById('profErr').classList.add('hide');
+  document.getElementById('profModal').classList.remove('hide');
+}
+function closeProf() {
+  _profDeviceId = null;
+  document.getElementById('profModal').classList.add('hide');
+}
+async function createProfiles() {
+  if (!_profDeviceId) return;
+  const count = parseInt(document.getElementById('profCount').value, 10);
+  const pkg = document.getElementById('profPackage').value.trim();
+  const prefix = document.getElementById('profPrefix').value.trim() || 'Profile';
+  const err = document.getElementById('profErr');
+  if (!(count >= 1 && count <= 50)) {
+    err.textContent = 'Number of profiles must be between 1 and 50.'; err.classList.remove('hide'); return;
+  }
+  const btn = document.getElementById('profCreateBtn');
+  btn.disabled = true; btn.textContent = 'Creating…';
+  try {
+    const r = await authFetch('/api/devices/' + _profDeviceId + '/create-profiles', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ count, package: pkg, name_prefix: prefix })
+    });
+    if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e.detail || ('error ' + r.status)); }
+    btn.textContent = 'Requested ✓';
+    setTimeout(() => { closeProf(); loadDevices(); }, 1200);
+  } catch (e) {
+    err.textContent = 'Could not create profiles: ' + e.message; err.classList.remove('hide');
+    btn.disabled = false; btn.textContent = 'Create';
+  }
 }
 
 // ---- live logs (admin) ----
