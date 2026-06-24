@@ -1,19 +1,36 @@
-from fastapi import APIRouter, Depends, HTTPException
+import os
+import re
+import shutil
+
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from ..config import settings
 from ..db import get_db
 from ..deps import current_user, require_admin
 from ..models import Agent, Assignment, Device
 from ..presence import presence
+from ..relay.agent_ws import _lookup_device
+from ..security import hash_device_token
+from ..transfers import transfers
 
 router = APIRouter()
 
 
-def _view(d: Device) -> dict:
+def _safe_name(name: str) -> str:
+    """Reduce an uploaded filename to a safe basename (no path traversal, sane charset)."""
+    name = os.path.basename(name or "").strip()
+    name = re.sub(r"[^A-Za-z0-9._ -]", "_", name)
+    return name[:120] or "file"
+
+
+def _view(d: Device, can_control: bool = True) -> dict:
     p = presence.get(d.id)
     return {
         "id": d.id,
+        "can_control": can_control,  # may this viewer push controls (upload, switch, refresh…)?
         "public_id": d.public_id,
         "name": d.name,
         "brand": d.brand,
@@ -30,17 +47,20 @@ def _view(d: Device) -> dict:
         "charge_limit_enabled": d.charge_limit_enabled,
         "charge_stop": d.charge_stop,
         "charge_resume": d.charge_resume,
+        "upload_status": p.get("upload_status"),  # last upload-to-gallery result the agent reported
     }
 
 
 @router.get("/devices")
 def list_devices(user=Depends(current_user), db: Session = Depends(get_db)):
-    q = db.query(Device)
-    if user.role != "admin":
-        ids = [row[0] for row in
-               db.query(Assignment.device_id).filter(Assignment.user_id == user.id).all()]
-        q = q.filter(Device.id.in_(ids or ["__none__"]))
-    return [_view(d) for d in q.order_by(Device.created_at).all()]
+    if user.role == "admin":
+        rows = db.query(Device).order_by(Device.created_at).all()
+        return [_view(d, True) for d in rows]
+    # VA: only assigned devices; carry each assignment's can_control through to the view.
+    cc = {a.device_id: bool(a.can_control)
+          for a in db.query(Assignment).filter(Assignment.user_id == user.id).all()}
+    q = db.query(Device).filter(Device.id.in_(list(cc) or ["__none__"]))
+    return [_view(d, cc.get(d.id, False)) for d in q.order_by(Device.created_at).all()]
 
 
 @router.get("/devices/{device_id}")
@@ -48,11 +68,13 @@ def get_device(device_id: str, user=Depends(current_user), db: Session = Depends
     d = db.get(Device, device_id)
     if not d:
         raise HTTPException(404, "not found")
+    can_control = True
     if user.role != "admin":
         a = db.query(Assignment).filter_by(device_id=device_id, user_id=user.id).first()
         if not a:
             raise HTTPException(403, "not assigned")
-    return _view(d)
+        can_control = bool(a.can_control)
+    return _view(d, can_control)
 
 
 class RenameIn(BaseModel):
@@ -223,3 +245,102 @@ async def create_profiles(device_id: str, body: CreateProfilesIn,
                           "package": body.package.strip(),
                           "name_prefix": (body.name_prefix.strip() or "Profile")[:24]})
     return {"ok": True}
+
+
+@router.post("/devices/{device_id}/upload-media")
+async def upload_media(device_id: str, files: list[UploadFile] = File(...),
+                       user=Depends(current_user), db: Session = Depends(get_db)):
+    """Upload photos/videos straight into the phone's gallery (DCIM/Camera), full quality.
+
+    The bytes are streamed to a transient temp dir and the agent is handed a job ticket; it
+    pulls the bytes back over HTTP, `adb push`es them to the active profile and triggers a
+    media scan, then the temp files are deleted. Nothing is recompressed end-to-end."""
+    d = db.get(Device, device_id)
+    if not d:
+        raise HTTPException(404, "not found")
+    if user.role != "admin":
+        a = db.query(Assignment).filter_by(device_id=device_id, user_id=user.id).first()
+        if not a or not a.can_control:
+            raise HTTPException(403, "not allowed")
+    if not files or not (1 <= len(files) <= 50):
+        raise HTTPException(422, "attach 1..50 files")
+    conn = presence.conn(device_id)
+    if conn is None:
+        raise HTTPException(409, "device offline")
+
+    transfers.sweep()  # opportunistically drop abandoned transfers
+    transfer_id = transfers.new_id()
+    tdir = transfers.dir_for(transfer_id)
+    os.makedirs(tdir, exist_ok=True)
+    max_bytes = settings.MAX_UPLOAD_MB * 1024 * 1024
+    entries, manifest = [], []
+    try:
+        for idx, uf in enumerate(files):
+            name = _safe_name(uf.filename)
+            path = os.path.join(tdir, f"{idx}_{name}")
+            size = 0
+            with open(path, "wb") as out:
+                while True:
+                    chunk = await uf.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    size += len(chunk)
+                    if size > max_bytes:
+                        raise HTTPException(413, f"{name} exceeds {settings.MAX_UPLOAD_MB} MB")
+                    out.write(chunk)
+            await uf.close()
+            entries.append({"idx": idx, "name": name, "size": size, "path": path})
+            manifest.append({"idx": idx, "name": name, "size": size})
+    except HTTPException:
+        shutil.rmtree(tdir, ignore_errors=True)
+        raise
+
+    transfers.register(transfer_id, device_id, entries)
+    try:
+        await conn.send_json({"op": "upload_media", "transfer_id": transfer_id, "files": manifest})
+    except Exception:
+        transfers.cleanup(transfer_id)
+        raise HTTPException(409, "device offline")
+    return {"ok": True, "transfer_id": transfer_id, "count": len(entries)}
+
+
+@router.get("/devices/media/{transfer_id}/{idx}")
+def download_media(transfer_id: str, idx: int, token: str = ""):
+    """Agent-only: stream one file of a transfer back to the agent. Authenticated by the
+    device token (same secret the agent uses for /ws/agent), and it must own the transfer."""
+    dev_id = _lookup_device(hash_device_token(token))
+    if not dev_id:
+        raise HTTPException(401, "bad token")
+    rec = transfers.get(transfer_id)
+    if not rec or rec["device_id"] != dev_id:
+        raise HTTPException(404, "no such transfer")
+    fp = transfers.file_path(transfer_id, idx)
+    if not fp:
+        raise HTTPException(404, "no such file")
+    path, name = fp
+    if not os.path.exists(path):
+        raise HTTPException(404, "gone")
+    return FileResponse(path, filename=name)
+
+
+@router.get("/devices/{device_id}/upload-status/{transfer_id}")
+def upload_status(device_id: str, transfer_id: str,
+                  user=Depends(current_user), db: Session = Depends(get_db)):
+    """Poll the result of an upload. While pending the agent hasn't reported yet; once done
+    it carries per-file ok/error. (Also mirrored into the device's presence as upload_status.)"""
+    d = db.get(Device, device_id)
+    if not d:
+        raise HTTPException(404, "not found")
+    if user.role != "admin":
+        a = db.query(Assignment).filter_by(device_id=device_id, user_id=user.id).first()
+        if not a:
+            raise HTTPException(403, "not assigned")
+    rec = transfers.get(transfer_id)
+    if rec is not None and rec["device_id"] == device_id:
+        return {"status": rec["status"], "result": rec["result"]}
+    # Transfer already cleaned up after completion — fall back to the last status in presence.
+    p = presence.get(device_id)
+    st = p.get("upload_status")
+    if st and st.get("transfer_id") == transfer_id:
+        return {"status": "done", "result": st.get("results")}
+    return {"status": "unknown", "result": None}

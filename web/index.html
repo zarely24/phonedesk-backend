@@ -95,6 +95,27 @@
     </div>
   </div>
 
+  <div id="uploadModal" class="modal-bg hide">
+    <div class="card modal">
+      <h3 id="uploadTitle">Upload to gallery</h3>
+      <p class="muted" style="margin:0">Send photos and videos straight to the phone's gallery
+        (DCIM/Camera) of the <b>active profile</b>, at full original quality. The phone must be online.</p>
+      <input type="file" id="uploadFiles" multiple accept="image/*,video/*"
+        onchange="uploadPicked()"
+        style="background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:10px;border-radius:10px;font-size:13px">
+      <p id="uploadPick" class="muted" style="margin:0;font-size:13px"></p>
+      <div id="uploadBarWrap" class="hide" style="height:8px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;overflow:hidden">
+        <div id="uploadBar" style="height:100%;width:0;background:var(--green,#3fb950);transition:width .15s"></div>
+      </div>
+      <div id="uploadResults" style="font-size:13px;display:flex;flex-direction:column;gap:4px"></div>
+      <p class="error hide" id="uploadErr"></p>
+      <div class="row">
+        <button class="btn" onclick="closeUpload()">Close</button>
+        <button class="btn primary" id="uploadSendBtn" onclick="sendUpload()" disabled>Upload</button>
+      </div>
+    </div>
+  </div>
+
   <div id="logsModal" class="modal-bg hide">
     <div class="card modal" style="width:min(760px,92vw)">
       <h3 id="logsTitle">Logs</h3>
@@ -109,6 +130,6 @@
     </div>
   </div>
 
-  <script src="/app.js?v=8"></script>
+  <script src="/app.js?v=9"></script>
 </body>
 </html>

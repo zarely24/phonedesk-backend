@@ -11,6 +11,7 @@ from ..db import SessionLocal
 from ..models import Agent, Device, _now
 from ..presence import presence
 from ..security import hash_device_token
+from ..transfers import transfers
 
 router = APIRouter()
 
@@ -80,6 +81,14 @@ async def agent_ws(ws: WebSocket):
             elif op == "log":
                 # The agent forwards its local agent.log lines here for the admin log view.
                 presence.add_log(device_id, str(msg.get("line", ""))[:2000])
+            elif op == "upload_result":
+                # The agent finished pushing an upload-to-gallery batch to the phone. Record the
+                # per-file result for the dashboard, then drop the transient temp files.
+                transfer_id = msg.get("transfer_id", "")
+                results = msg.get("results", [])
+                transfers.set_result(transfer_id, results)
+                presence.set_upload_status(device_id, {"transfer_id": transfer_id, "results": results})
+                transfers.cleanup(transfer_id)
             # op == "tunnel" handled in Phase 1b
     except WebSocketDisconnect:
         pass

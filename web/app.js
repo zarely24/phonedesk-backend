@@ -53,6 +53,7 @@ function rowHTML(d) {
       : `<button class="btn" disabled title="Device offline">Connect</button>`,
     admin ? `<button class="btn icon" title="Battery charge limit" onclick="showBatt('${d.id}')">🔋</button>` : '',
     admin ? `<button class="btn icon" title="Bulk profile creation" onclick="showProf('${d.id}')">👥</button>` : '',
+    (admin || d.can_control) ? `<button class="btn icon" title="Upload to gallery" onclick="showUpload('${d.id}')"${online ? '' : ' disabled'}>📤</button>` : '',
     admin ? `<button class="btn icon" title="Logs" onclick="showLogs('${d.id}')">📋</button>` : '',
     admin ? `<button class="btn icon" title="Rename" onclick="renameDevice('${d.id}')">✎</button>` : '',
     admin ? `<button class="btn icon danger" title="Delete" onclick="deleteDevice('${d.id}')">🗑</button>` : '',
@@ -230,6 +231,113 @@ async function createProfiles() {
     err.textContent = 'Could not create profiles: ' + e.message; err.classList.remove('hide');
     btn.disabled = false; btn.textContent = 'Create';
   }
+}
+
+// ---- upload to gallery (admin / VA with control) ----
+let _uploadDeviceId = null;
+let _uploadPoll = null;
+
+function showUpload(id) {
+  _uploadDeviceId = id;
+  const d = _devices.find(x => x.id === id);
+  document.getElementById('uploadTitle').textContent = 'Upload to gallery — ' + (d ? d.name : id);
+  document.getElementById('uploadFiles').value = '';
+  document.getElementById('uploadPick').textContent = '';
+  document.getElementById('uploadResults').innerHTML = '';
+  document.getElementById('uploadErr').classList.add('hide');
+  document.getElementById('uploadBarWrap').classList.add('hide');
+  document.getElementById('uploadBar').style.width = '0';
+  document.getElementById('uploadSendBtn').disabled = true;
+  document.getElementById('uploadSendBtn').textContent = 'Upload';
+  document.getElementById('uploadModal').classList.remove('hide');
+}
+function closeUpload() {
+  _uploadDeviceId = null;
+  if (_uploadPoll) { clearInterval(_uploadPoll); _uploadPoll = null; }
+  document.getElementById('uploadModal').classList.add('hide');
+}
+function _fmtSize(b) {
+  if (b < 1024) return b + ' B';
+  if (b < 1024 * 1024) return (b / 1024).toFixed(0) + ' KB';
+  if (b < 1024 * 1024 * 1024) return (b / 1024 / 1024).toFixed(1) + ' MB';
+  return (b / 1024 / 1024 / 1024).toFixed(2) + ' GB';
+}
+function uploadPicked() {
+  const files = document.getElementById('uploadFiles').files;
+  const pick = document.getElementById('uploadPick');
+  const btn = document.getElementById('uploadSendBtn');
+  if (!files.length) { pick.textContent = ''; btn.disabled = true; return; }
+  let total = 0;
+  for (const f of files) total += f.size;
+  pick.textContent = `${files.length} file${files.length > 1 ? 's' : ''} · ${_fmtSize(total)}`;
+  btn.disabled = files.length > 50;
+  if (files.length > 50) pick.textContent += ' — max 50 at once';
+}
+function sendUpload() {
+  if (!_uploadDeviceId) return;
+  const files = document.getElementById('uploadFiles').files;
+  if (!files.length) return;
+  const err = document.getElementById('uploadErr');
+  const btn = document.getElementById('uploadSendBtn');
+  const bar = document.getElementById('uploadBar');
+  const barWrap = document.getElementById('uploadBarWrap');
+  const results = document.getElementById('uploadResults');
+  err.classList.add('hide'); results.innerHTML = '';
+  const fd = new FormData();
+  for (const f of files) fd.append('files', f, f.name);
+
+  btn.disabled = true; btn.textContent = 'Uploading…';
+  barWrap.classList.remove('hide'); bar.style.width = '0';
+  // XHR (not fetch) so we get real upload progress.
+  const xhr = new XMLHttpRequest();
+  xhr.open('POST', '/api/devices/' + _uploadDeviceId + '/upload-media');
+  xhr.setRequestHeader('Authorization', 'Bearer ' + token);
+  xhr.upload.onprogress = (e) => {
+    if (e.lengthComputable) bar.style.width = Math.round(e.loaded / e.total * 100) + '%';
+  };
+  xhr.onload = () => {
+    if (xhr.status === 401) { logout(); return; }
+    if (xhr.status < 200 || xhr.status >= 300) {
+      let detail = 'error ' + xhr.status;
+      try { detail = JSON.parse(xhr.responseText).detail || detail; } catch (e) {}
+      err.textContent = 'Upload failed: ' + detail; err.classList.remove('hide');
+      btn.disabled = false; btn.textContent = 'Upload'; barWrap.classList.add('hide');
+      return;
+    }
+    bar.style.width = '100%';
+    btn.textContent = 'Sent — pushing to phone…';
+    const resp = JSON.parse(xhr.responseText);
+    pollUpload(_uploadDeviceId, resp.transfer_id);
+  };
+  xhr.onerror = () => {
+    err.textContent = 'Upload failed: network error'; err.classList.remove('hide');
+    btn.disabled = false; btn.textContent = 'Upload'; barWrap.classList.add('hide');
+  };
+  xhr.send(fd);
+}
+function pollUpload(deviceId, transferId) {
+  const results = document.getElementById('uploadResults');
+  const btn = document.getElementById('uploadSendBtn');
+  results.innerHTML = '<span class="muted">Waiting for the phone to confirm…</span>';
+  let ticks = 0;
+  if (_uploadPoll) clearInterval(_uploadPoll);
+  _uploadPoll = setInterval(async () => {
+    ticks++;
+    if (ticks > 60) { clearInterval(_uploadPoll); _uploadPoll = null; return; }  // ~90s cap
+    try {
+      const r = await authFetch(`/api/devices/${deviceId}/upload-status/${transferId}`);
+      if (!r.ok) return;
+      const data = await r.json();
+      if (data.status === 'done' && data.result) {
+        clearInterval(_uploadPoll); _uploadPoll = null;
+        results.innerHTML = data.result.map(f =>
+          `<div>${f.ok ? '✅' : '❌'} ${esc(f.name)}${f.ok ? '' : ' — ' + esc(f.error || 'failed')}</div>`
+        ).join('');
+        btn.textContent = 'Done'; btn.disabled = false;
+        loadDevices();
+      }
+    } catch (e) { /* transient */ }
+  }, 1500);
 }
 
 // ---- live logs (admin) ----

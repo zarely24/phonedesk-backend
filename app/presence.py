@@ -60,6 +60,11 @@ class Presence:
         m["online"] = True
         m["last_seen"] = time.time()
 
+    def set_upload_status(self, device_id: str, status: dict) -> None:
+        """Remember the last upload-to-gallery result the agent reported, for the dashboard."""
+        m = self._meta.setdefault(device_id, {})
+        m["upload_status"] = status
+
     def is_online(self, device_id: str) -> bool:
         m = self._meta.get(device_id)
         return bool(m and self._fresh(m) and device_id in self._conns)

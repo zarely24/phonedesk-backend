@@ -9,7 +9,10 @@ This fake agent also exercises the newer relay ops so you can test without a rea
     stored charge limit), so the dashboard battery indicator updates;
   - it prints any `set_charge_policy` / `create_profiles` ops the backend relays;
   - on `create_profiles` it replies with a `meta` op adding fake users, so the new profiles
-    show up in the dashboard and the stream-page profile switcher.
+    show up in the dashboard and the stream-page profile switcher;
+  - on `upload_media` it fetches each file back over HTTP, checks the byte count matches what
+    the backend advertised (proving the bytes survive intact / full quality), and replies with
+    an `upload_result` op so the dashboard shows per-file ✅/❌.
 
 Run several copies with different pairing codes to simulate many phones on one computer.
 """
@@ -27,6 +30,7 @@ WSBASE = "ws://localhost:8000"
 class FakeDevice:
     def __init__(self, name: str) -> None:
         self.name = name
+        self.token = ""   # device token, set after pairing (used to fetch uploaded media)
         self.battery = 78
         self.charging = True
         # Charge policy the backend pushes on connect / via set_charge_policy.
@@ -86,6 +90,26 @@ async def _recv_loop(ws, dev: FakeDevice) -> None:
             for i in range(count):
                 dev.users.append({"id": next_id + i, "name": f"{prefix} {next_id + i}"})
             await ws.send(json.dumps(dev.meta()))  # report the new users back
+        elif op == "upload_media":
+            transfer_id = msg.get("transfer_id", "")
+            files = msg.get("files", [])
+            print(f"[{dev.name}] upload_media -> {len(files)} file(s), transfer={transfer_id}")
+            results = []
+            for f in files:
+                idx, name, want = f.get("idx"), f.get("name"), f.get("size")
+                try:
+                    url = f"{BASE}/api/devices/media/{transfer_id}/{idx}?token={dev.token}"
+                    got = await asyncio.to_thread(lambda: httpx.get(url, timeout=60).content)
+                    ok = len(got) == want
+                    err = None if ok else f"size mismatch {len(got)}!={want}"
+                    print(f"    {'OK' if ok else 'BAD'} {name} ({len(got)} bytes)")
+                    results.append({"name": name, "ok": ok, "error": err})
+                except Exception as e:
+                    print(f"    FAIL {name}: {e}")
+                    results.append({"name": name, "ok": False, "error": str(e)})
+            await ws.send(json.dumps({
+                "op": "upload_result", "transfer_id": transfer_id, "results": results,
+            }))
         elif op in ("refresh", "switch_user", "rename_user", "unpair"):
             print(f"[{dev.name}] {op} {msg}")
         else:
@@ -101,6 +125,7 @@ async def main(code: str) -> None:
         })
         r.raise_for_status()
         paired = r.json()
+    dev.token = paired["device_token"]
     print(f"paired '{paired['public_id']}' — keeping it online (Ctrl-C to stop)")
     async with websockets.connect(f"{WSBASE}/ws/agent?token={paired['device_token']}") as ws:
         await asyncio.gather(_send_loop(ws, dev), _recv_loop(ws, dev))
